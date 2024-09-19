@@ -1,0 +1,168 @@
+Title: "&8&lLantern's Light Library"
+Options.Min-Click-Delay: 200
+
+Layout:
+  - '|||||||||'
+  - '|BBBBBBB|'
+  - '|BBBBBBB|'
+  - '||||C||||'
+
+Events:
+  Open: 
+    - 'sound: BLOCK_CHEST_OPEN-1-0 &&& delay: 1'
+    - 'js: funcs("setPages"); funcs("setIcons")'
+  Close: "remove-meta: sorting &&& update: C"
+
+Icons:
+  "|":
+    display:
+      material: black_stained_glass_pane
+      name: "&f"
+
+  "C":
+    display:
+      material: 'source:HDB:34978'
+      name: "&3Control Center"
+      lore:
+      - '&bSorting &8[&7${js: meta.inverted_sorting ? "Descending": "Ascending" }&8]'
+      - '${js: funcs("getSortingItemLore") }'
+      - ''
+      - '&8[ &7Press 1-${js: config.get("SORTING").size() } to choose &8]'
+      - '&8[ &7Drop to invert order &8]'
+      - ''
+      - '&bPagination'
+      - '&8[ &7Left - next page &8]'
+      - '&8[ &7Right - previous page &8]'
+      - ''
+      - '&bSearch By Author'
+      - '&8[ &7Press F to input &8]'
+    actions:
+      left:
+      - condition: '$ meta.currentPage != meta.maxPages'
+        actions: 
+        - 'js: utils.getIconSlots("B", session).forEach(function(e) { session.receptacle.setElement(null, e, true) })'
+        - 'js: meta.currentPage = meta.currentPage + 1; funcs("setIcons") <delay:1>'
+      right:
+      - condition: '$ meta.currentPage != 1'
+        actions: 
+        - 'js: session.receptacle.setElement(null, utils.getIconSlots("B", session), true)'
+        - 'js: meta.currentPage = meta.currentPage -1; funcs("setIcons") <delay:1>'
+      drop: 
+      - condition: '$ meta.sorting != undefined'
+        actions: |-
+          js: meta.inverted_sorting = !meta.inverted_sorting;
+          session.receptacle.setElement(null, utils.getIconSlots("B", session), true)
+          utils.runAction(player, 'update: C', 'delay: 1', 'js: funcs("setIcons")')
+          funcs("sortEntries")
+      number_key:
+      - condition: '$ meta.click_type.slice(-1) <= config.get("SORTING").size()'
+        actions: |-
+          js: meta.sorting = config.get("SORTING")[meta.click_type.slice(-1) - 1][0]
+          session.receptacle.setElement(null, utils.getIconSlots("B", session), true)
+          utils.runAction(player, 'update: C', 'delay: 1', 'js: funcs("setIcons")')
+          funcs("sortEntries")
+      offhand:
+      - catcher.tag:
+          type: SIGN
+          after: 
+            - condition: |-
+                $ var inputPlayer = bukkitServer.getPlayerExact(meta.input)
+                var uuid = inputPlayer == null ? null : inputPlayer.uniqueId
+                uuid == null ? false : Metadata.globalData.contains("library.${uuid}")
+              deny: [ 'tell: &cCould not find an entry with given name.', 'delay: 20', 'gui: library' ]
+              actions: |-
+                js: var uuid = bukkitServer.getPlayerExact(meta.input).uniqueId
+                utils.runAction(player, 'js: vars("%javascript_library_show," + uuid + "%") <delay: 5>')
+
+  "B":
+    display.material: AIR
+    actions.all: 
+    - condition: '$ meta.icons[meta.slot] != undefined'
+      actions: 'close &&& js: var v = meta.icons[meta.slot]; vars("%javascript_library_show,${v.uuid},${v.index}%")'
+
+Functions:
+  setPages: |-
+    Metadata = utils.staticClass("me.arasple.mc.trmenu.module.internal.data.Metadata")
+    SimpleDateFormat = utils.staticClass("java.text.SimpleDateFormat")
+    Collectors = utils.staticClass("java.util.stream.Collectors");
+    Lists = utils.staticClass("com.google.common.collect.Lists");
+    Comparator = utils.staticClass("java.util.Comparator");
+    UUID = utils.staticClass("java.util.UUID");
+
+    meta.entries = Metadata.globalData.contains("library") 
+      ? Metadata.globalData.get("library").getValues(false).entrySet()
+        .stream().flatMap(function(e) {
+          return java.util.stream.IntStream
+            .range(0, e.getValue().size())
+            .mapToObj(function(i) { 
+              return ({ uuid: e.getKey(), book: e.getValue()[i], index: i })
+            })
+        }).collect(Collectors.toList())
+      : Lists.newArrayList()
+    funcs("sortEntries")
+
+    var slots = utils.getIconSlots("B", session);
+    meta.currentPage = 1; meta.maxPages = 0; meta.pageSetting = {};
+    for (var i = 0, j = 0; i < meta.entries.size(); i++, j++) {
+      if (i % slots.size() == 0) { 
+        meta.maxPages++, j = 0; 
+        meta.pageSetting[meta.maxPages] = {} 
+      }
+      meta.pageSetting[meta.maxPages][slots[j]] = i;
+    }
+
+  setIcons: |-
+    var builder = utils.getItemBuildr();
+    builder.setMaterial(utils.materialOf("BOOK"))
+    var pageSetting = meta.pageSetting[meta.currentPage]
+    var slots = utils.getIconSlots("B", session); meta.icons = {};
+    for (var i = 0; i < slots.length; i++) {
+      if (pageSetting == undefined || pageSetting[slots[i]] == undefined) {
+        session.receptacle.setElement(null, slots[i], true);
+        continue
+      }
+      var book = meta.entries[i].book, uuid = UUID.fromString(meta.entries[i].uuid)
+      builder.lore.add("§bBy §8| §f" + bukkitServer.getPlayer(uuid).getName())
+      builder.name = book.get("title"); 
+
+      var formatter = new SimpleDateFormat("M/d/y h:m")
+      var date = new java.util.Date(book.get("timestamp"))
+      builder.lore.add("§bDate §8| §f" + formatter.format(date))
+      var score = book.get("ai_score").toFixed(2)
+      if (score != -1) builder.lore.add("§bAI Score §8| §f" + score + "%")
+
+      session.receptacle.setElement(builder.build(), slots[i], true);
+      meta.icons[slots[i]] = { uuid: uuid, index: meta.entries[i].index }; 
+      builder.lore.clear();
+    }
+    return true
+
+  sortEntries: |-
+    var stream = meta.entries.stream(), sortingMethod = null
+    if (meta.sorting == "PLAYER_NAME") 
+      sortingMethod = Comparator.comparing(function(e) { return bukkitServer.getPlayer(e.uuid) })
+    else if (meta.sorting == "TIMESTAMP") 
+      sortingMethod = Comparator.comparingLong(function(e) { return e.book.get("timestamp") })
+    else if (meta.sorting == "AI_SCORE") 
+      sortingMethod = Comparator.comparingDouble(function(e) { return e.book.get("ai_score") })
+
+    // TODO: Implement sorting by user rating
+    // else if (meta.sorting == "RATING") 
+    //   sortingMethod = Comparator.comparingDouble(function(e) { })
+
+    if (sortingMethod) stream = stream.sorted(meta.inverted_sorting ? sortingMethod.reversed() : sortingMethod)
+    meta.entries = stream.collect(Collectors.toList());
+
+  getSortingItemLore: |-
+    Java.from(config.get("SORTING"))
+      .map(function(e, i) { 
+          var prefix = e[0] == meta.sorting ? "§f - §7" : "§7 - §8"
+          return prefix + e[1]
+        })
+      .join("\n");
+
+SORTING: 
+  - [ PLAYER_NAME, "Author's name" ]
+  - [ TIMESTAMP, "Release date" ]
+  # - [ RATING, "Book rating" ] # Not yet implemented
+  - [ AI_SCORE, "AI Score" ]

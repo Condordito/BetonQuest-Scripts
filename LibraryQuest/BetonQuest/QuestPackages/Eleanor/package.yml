@@ -1,0 +1,148 @@
+npcs.5: Eleanor
+
+variables:
+  topics: cars,boats,trains
+  chest_location: { x: 7, y: -59, z: 24, world: world }
+
+events:
+  # Visualizer 
+  visualize: run
+    ^if has_books open_library else v_notify_error 
+    conditions:!has_chest_cd
+  open_library: run
+    ^objective add chest_cd
+    ^command trm open library %player%
+  v_notify_error: run
+    ^variable var_objective error "\"No books available\""
+    ^folder error
+
+  # Submission
+  submission: command help %ph.javascript_library_add,{betonquest_Eleanor:objective.var_objective.topic}% conditions:!has_chest_cd
+  set_topic: variable var_objective topic %ph.string_random_$topics$%
+  add_sub_obj: objective add submission
+  
+  # States
+  start_quest: run 
+    ^tag add quest_started
+    ^objective add var_objective
+  stop_quest: run 
+    ^tag delete quest_started
+    ^objective remove particle,submission
+  complete_quest: run
+    ^folder stop_quest,rotate_head
+    ^tag add quest_completed
+    ^objective add visualize
+    ^conversation Eleanor option:accept-boook
+  reset_quest: run
+    ^folder stop_quest
+    ^tag delete quest_completed
+    ^objective remove visualize
+
+  # Sound & particles
+  chat_sound: notify io:sound sound:block.note_block.hat
+  chest_particle: particle chest loc:%math.calc:$chest_location.x$+{randomnumber.decimal~2.0~1}%;%math.calc:$chest_location.y$+{randomnumber.decimal~2.0~1}%;%math.calc:$chest_location.z$+{randomnumber.decimal~2.0~1}%;$chest_location.world$ private 
+  particle_folder: folder chest_particle,add_particle_obj
+  add_particle_obj: objective add particle
+
+  # Head rotation
+  rotate_head: run 
+    ^folder toggle_pose
+    ^folder assume_pose,toggle_pose period:35 ticks
+  assume_pose: command npc pose --assume chest --id 5
+  toggle_pose: command npc lookclose --id 5
+
+  # Extra
+  error: run 
+    ^objective add chest_cd
+    ^notify &cError\n%objective.var_objective.error%
+    io:title stay:20 fadeIn:2 fadeOut:2
+    sound:entity.axolotl.death soundpitch:0
+
+
+objectives:
+  submission: action left any loc:$chest_location.x$;$chest_location.y$;$chest_location.z$;$chest_location.world$ events:submission persistent
+  visualize: action left any loc:$chest_location.x$;$chest_location.y$;$chest_location.z$;$chest_location.world$ events:visualize persistent
+  particle: delay 5 ticks interval:1 events:particle_folder
+  chest_cd: delay 50 ticks interval:5
+  var_objective: variable no-chat
+
+conditions:
+  has_books: numbercompare %ph.javascript_library_size% > 0
+  has_chest_cd: objective chest_cd
+  quest_started: tag quest_started
+  quest_completed: tag quest_completed
+
+conversations: 
+  Eleanor: 
+    quester: "Eleanor Scroll" 
+    first: quest_completed,quest_started,welcome
+    NPC_options: 
+      quest_started:
+        text: |-
+          Hello %player%!
+
+          Were you able to complete
+          writting your book?
+        conditions: quest_started
+        pointer: p3-deny,p3-change
+      quest_completed:
+        text: |-
+          Hello %player%!
+
+          You have already submitted a book.
+          There is nothing else I can do for you
+        conditions: quest_completed
+      welcome:
+        text: |-
+          Hey %player%!
+
+          Got something exciting for you.
+          You in for some fun?
+        pointers: p1-accept,p1-deny
+      npc-accept:
+        text: |-
+          I need you to write a &bshort story 
+          &fabout &b%objective.var_objective.topic%&f. 
+
+          Can you do that for me?
+        pointers: p2-accept,p2-deny
+      npc-cancel.text: |
+        Alright, hope you change 
+        your mind
+      instruction.text: |-
+          Hit the chest next to me 
+          to submit your work
+      accept-boook.text: |-
+        Now you can hit the chest 
+        again to view all submissions.
+
+        Have a wonderfull day!
+    player_options: 
+      p1-accept:
+        text: Count me in!
+        pointer: npc-accept
+        events: start_quest,set_topic,chat_sound
+      p1-deny:
+        text: Maybe another time.
+        pointer: npc-cancel
+        events: stop_quest
+      p2-accept:
+        text: Let's delve into it!
+        events: add_sub_obj,particle_folder,chat_sound,rotate_head
+        pointer: instruction
+      p2-deny:
+        text: Oh, I don't think so.
+        pointer: npc-cancel
+        events: stop_quest
+      p3-deny:
+        text: Sorry, I can not do it
+        events: stop_quest
+        pointer: npc-cancel
+      p3-change:
+        text: I'd like another topic
+        pointer: npc-accept
+        events: set_topic
+      
+effects.chest:
+  class: Particle
+  particle: villager_happy
