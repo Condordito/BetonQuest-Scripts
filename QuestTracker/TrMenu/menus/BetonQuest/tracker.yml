@@ -1,0 +1,691 @@
+Title: "&8&lContent Book"
+Options:
+  Min-Click-Delay: 200
+  Hide-Player-Inventory: true
+
+Layout:
+  - QQQQQQQQS
+  - QQQQQQQQN
+  - QQQQQQQQP
+  - QQQQQQQQF
+
+Icons: 
+  Q:
+    display.material: AIR
+    actions:
+      drop: 'js: computeDropAction()'
+      right,left: 'js: changePage()'
+      shift_right,shift_left: 'js: cycleSelector()'
+      offhand: 'js: computeSelection()'
+      number_key: 'js: changeSection()'
+      control_drop: 'js: openPreviewer()'
+  N: 
+    display:
+      material: 'source:HDB:8787'
+      name: "&7Next Page"
+    actions.all:
+    - condition: '$ meta.current_page != meta.max_pages'
+      actions: 
+      - 'js: session.receptacle.setElement(null, utils.getIconSlots("Q", session), true)'
+      - 'js: meta.current_page = meta.current_page + 1; funcs("loadIcons") <delay:1>'
+  P: 
+    display:
+      material: 'source:HDB:8790'
+      name: "&7Previous Page"
+    actions.all:
+    - condition: "$ meta.current_page !== 1"
+      actions: 
+      - 'js: session.receptacle.setElement(null, utils.getIconSlots("Q", session), true)'
+      - 'js: meta.current_page = meta.current_page -1; funcs("loadIcons") <delay:1>'
+  S:
+    display:
+      material: feather
+      name: '&aSort &8[&7${js: meta.inverted_sorting ? "Descending": "Ascending" }&8]'
+      lore: 
+      - '${js: funcs("getSortingItemLore") }'
+      - ''
+      - '&aLeft&7-&aClick &7for next'
+      - '&aRight&7-&aClick &7for previous'
+      - ''
+      - '&8[ &7Drop to invert order &8]'
+    actions:
+      left,right: 'js: funcs("cycleSort")'
+      drop: 
+      - condition: "$ meta.sorting != null"
+        actions: |-
+          js: meta.inverted_sorting = !meta.inverted_sorting;
+          session.receptacle.setElement(null, utils.getIconSlots("Q", session), true)
+          funcs("sortQuests"); 
+          utils.runAction(player, 'update: S', 'js: funcs("loadIcons") <delay:1>')
+  F:
+    display:
+      material: feather
+      name: '&eFilter'
+      lore: 
+      - '${js: funcs("getFilterItemLore") }'
+      - ''
+      - '&eLeft&7-&eClick &7for next'
+      - '&eRight&7-&eClick &7for previous'
+    actions.left,right: 'js: funcs("cycleFilter")'
+
+
+Events:
+  Open: 
+    - 'sound: BLOCK_CHEST_OPEN-1-0 &&& delay: 1'
+    - 'js: funcs("initialize")'
+  Close: "remove-meta: sorting;filter &&& update: S;F"
+
+Functions:
+  initialize: |-
+    var betonPath = "org.betonquest.betonquest";
+    var PlayerConverter = utils.staticClass("${betonPath}.utils.PlayerConverter");
+    StringArray = Java.type("java.lang.String[]")
+    JavaString = utils.staticClass("java.lang.String")
+    Optional = utils.staticClass("java.util.Optional");
+    Comparator = utils.staticClass("java.util.Comparator");
+    Collectors = utils.staticClass("java.util.stream.Collectors");
+    IntStream = utils.staticClass("java.util.stream.IntStream");
+    Lists = utils.staticClass("com.google.common.collect.Lists");
+    Iterables = utils.staticClass("com.google.common.collect.Iterables")
+    BetonQuest = utils.staticClass("${betonPath}.BetonQuest");
+    MMOItems = utils.staticClass("net.Indyuce.mmoitems.MMOItems")
+    ItemStats = utils.staticClass("net.Indyuce.mmoitems.ItemStats")
+    PlayerData = utils.staticClass("net.Indyuce.mmoitems.api.player.PlayerData")
+    MythicLib = utils.staticClass("io.lumine.mythic.lib.MythicLib")
+    Metadata = utils.staticClass("me.arasple.mc.trmenu.module.internal.data.Metadata")
+    GlobalVariableResolver = utils.staticClass("${betonPath}.variables.GlobalVariableResolver");
+    VariableString = utils.staticClass("${betonPath}.VariableString")
+    ConditionID = utils.staticClass("${betonPath}.id.ConditionID");
+    EventID = utils.staticClass("${betonPath}.id.EventID");
+    ObjectiveID = utils.staticClass("${betonPath}.id.ObjectiveID");
+    Config = utils.staticClass("${betonPath}.config.Config");
+    ChatColor = utils.staticClass("org.bukkit.ChatColor");
+    Bukkit = utils.staticClass("org.bukkit.Bukkit");
+    Location = utils.staticClass("org.bukkit.Location")
+    YamlConfiguration = utils.staticClass("org.bukkit.configuration.file.YamlConfiguration")
+    betonInstace = BetonQuest.getInstance();
+    profile = PlayerConverter.getID(session.viewer);
+    playerData = betonInstace.getPlayerData(profile);
+    tags = playerData.getTags();
+    meta.inverted_sorting = false;
+
+    function refreshFooter(quest) {
+      var stack = session.receptacle.getElement(meta.slot)
+      var lore = stack.getLore()
+      lore.subList(quest.footer, lore.size()).clear();
+      lore.addAll(getFooterLore(quest))
+      stack.editMeta(function(m) { m.setLore(lore) })
+      session.receptacle.setElement(stack, meta.slot, true)
+    }
+
+    function changePage() {
+      var quest = meta.icons[meta.slot]
+      if (!quest || !quest.rewards) return
+      var page = quest.page || 0;
+      var range = quest.rewards.size()
+      var newPage = (meta.click_type == "LEFT" ? 1 : -1) + page
+      quest.page = (newPage % range + range) % range;
+      if (page == quest.page) return
+      refreshFooter(quest)
+    }
+
+    function changeSection() {
+      var quest = meta.icons[meta.slot]
+      if (!quest || !quest.rewards) return
+      var page = quest.page || 0
+      if (page >= quest.rewards.size()) return
+      var reward = quest.rewards.get(page)
+      if (reward.options.length == 1) return
+      var keys = reward.options.keySet().stream()
+        .sorted(Comparator.comparingInt(function(key) { 
+          return config.get("REWARDS").get("${key}.PRIORITY") 
+        })).toArray()
+
+      var category = reward.category
+      var index = meta.click_type.substring(meta.click_type.length - 1) - 1
+      if (index >= keys.length) return
+      reward.category = keys[index]
+      if (category == reward.category) return
+      refreshFooter(quest)
+    }
+
+    function cycleSelector() {
+      var quest = meta.icons[meta.slot]
+      if (!quest || !quest.rewards) return
+      var page = quest.page || 0
+      if (page >= quest.rewards.size()) return
+      var reward = quest.rewards.get(page)
+      if (!reward.category) 
+        reward.category = reward.options.keySet().toArray()[0]
+      if (reward.category != "SELECTOR") return
+      // TODO: Return, close and send error message if the current reward isn't claimable
+      var range = reward.options.SELECTOR.options.size()
+      var cycle = meta.click_type == "SHIFT_LEFT" ? 1 : -1
+      reward.selection = reward.selection != undefined 
+        ? ((reward.selection + cycle) % range + range) % range
+        : cycle == 1 ? 0 : cycle 
+      refreshFooter(quest)
+    }
+
+    function computeSelection() {
+      var quest = meta.icons[meta.slot]
+      if (!quest || !quest.rewards) return
+      var page = quest.page || 0
+      if (page >= quest.rewards.size()) return
+      var reward = quest.rewards.get(page)
+      if (reward.category != "SELECTOR" || reward.selection == undefined) return
+      // TODO: Return, close and send error message if the current reward isn't claimable
+      var hasIndex = reward.selector.contains(reward.selection)
+      var maxCapacity = reward.selector.size() == reward.options.SELECTOR.iterations
+      if (maxCapacity && !hasIndex) reward.selector.remove()
+      if (hasIndex) reward.selector.remove(reward.selection)
+      else reward.selector.add(reward.selection)
+      refreshFooter(quest)
+    }
+
+    function computeDropAction() {
+      var quest = meta.icons[meta.slot]
+      if (!quest) return
+      if (quest.rewards) {
+        var page = quest.page || 0, reward = null
+        if (page < quest.rewards.size()) reward = quest.rewards.get(page)
+        if (reward && reward.done) {
+          var result = giveReward(quest, reward)
+          if (!result.success) player.sendMessage(result.message)
+          return utils.runAction(player, "close")
+        }
+      }
+      if (!quest.trackable) return
+      if (vars("%javascript_tracker_has,${quest.id}%") == "true") {
+        vars("%javascript_tracker_toggle,${quest.id}%")
+      } else {
+        vars("%javascript_tracker_tab,${quest.id},${quest.name}, \n${quest.description}\n %")
+        var loc = quest.location
+        if (loc != null) {
+          vars("%javascript_tracker_loc,${quest.id},${loc.world.getName()},${loc.x},${loc.y},${loc.z}%") 
+        }
+        vars("%javascript_tracker_show,${quest.id}%") 
+      }
+      utils.runAction(player, "close")
+    }
+
+    function openPreviewer() {
+      var quest = meta.icons[meta.slot]
+      if (!quest || !quest.rewards) return
+      quest.visualizer = quest.rewards.stream()
+        .flatMap(function(set) { return set.options.values().stream().flatMap(function(s) { return s.options.stream() }) })
+        .filter(function(e) { return e.value.type == "ITEM" })
+        .filter(distinctById(function(e) { return e.value.result.id }))
+        .map(function(e) { return e.value.result })
+        .collect(Collectors.toList())
+      if (quest.visualizer.size() == 0) return
+      var rows = Math.min(Math.floor((quest.visualizer.size()-1) / 9), 5)
+      utils.runAction(player, "close &&& gui: previewer:${rows} <delay:1>")
+    }
+
+    function distinctById(callback) {
+      var seen = new java.util.HashSet()
+      return new java.util.function.Predicate(function(element) {
+        return seen.add(callback(element))
+      })
+    }
+
+    function giveReward(quest, reward) {
+      var selector = reward.options.SELECTOR
+      if (selector && selector.iterations != reward.selector.size()) 
+        return { success: false, message: config.get("ERROR_MESSAGES.UNSELECTED")}
+      reward.options.entrySet().forEach(function (set) {
+        var options = set.value.options
+        if (set.key == "GUARANTEED") {
+          options.forEach(function(o) { BetonQuest.event(profile, o.id) })
+        } else {
+          var indexes = set.key == "RANDOM" 
+            ? getRandomIndexes(options.size(), set.value.iterations)
+            : reward.selector
+          indexes.forEach(function(i) { BetonQuest.event(profile, options.get(i).id) })
+        }
+      })
+      var path = "quest_stages.${quest.id}.${player.uniqueId}.rewards";
+      var readOnly = Metadata.globalData.get(path, Lists.newArrayList())
+      var rewards = Lists.newArrayList(readOnly)
+      rewards.remove(quest.rewards.indexOf(reward))
+      Metadata.globalData.set(path, rewards)
+      return { success: true }
+    }
+
+
+    function getRandomIndexes(max, iterations) {
+      var result = new java.util.ArrayList(iterations)
+      while (result.length < iterations) {
+        if (result.length == max) break
+        var random = Math.floor(Math.random() * max)
+        if (result.contains(random)) continue
+        result.add(random)
+      }
+      return result
+    }
+
+    function getRewardLore(quest) {
+      var lore = Lists.newArrayList(), page = quest.page || 0
+      var options = config.get("REWARDS")
+      if (page >= quest.rewards.size()) return lore
+      var reward = quest.rewards.get(page)
+      var keys = reward.options.keySet().stream()
+        .sorted(Comparator.comparingInt(function(key) { 
+          return options.get("${key}.PRIORITY") 
+        })).collect(Collectors.toList())
+      
+      
+      var key = reward.options[reward.category] ? reward.category : keys[0]
+      var args = new StringArray(session.arguments.length)
+      session.arguments = Java.from(reward.args)
+
+      var category = reward.options[key]
+      var titleFormat = options.get("${key}.DESCRIPTION")
+      var categoryTitle = JavaString.format(titleFormat, category.iterations)
+      var pageText = "§f${page+1}§7/§f${quest.rewards.size()}"
+
+      var dots = keys.stream()
+        .map(function(k) { return k == key ? "§f■" : "§7■"})
+        .collect(Collectors.joining())
+
+      lore.addAll(["","   §dRewards §8| ${categoryTitle}"])
+      lore.add("   §dStack §7${pageText} §8| §dSection §7${dots}")
+      for (var i = 0; i < category.options.size(); i++) {
+        var option = category.options.get(i)
+        var suffix = key == "SELECTOR" && i  == reward.selection ? " §a✏" : ""
+        var color = key == "SELECTOR" && reward.selector.contains(i) ? "§f" : "§7"
+        var message = getFormattedValue(quest.package, option.format, option.value)
+        lore.add("   §d- ${color}+${message}" + suffix) 
+      }
+      return lore
+    }
+
+    function getFormattedValue(package, format, value) {
+      if (format == null) return resolveVars(package, value.result)
+      var parsedformat = resolveVars(package, format)
+      if (value.type == "ITEM") {
+        var stack = value.result.stack
+        var name = stack.getItemMeta().getDisplayName()
+        name = name.length == 0 ? stack.type : ChatColor.stripColor(name)
+        var aType = value.result.amount.type,
+            aValue = value.result.amount.result
+
+        if (aType == "RANGE") {
+          var min = resolveVars(package, aValue.min)
+          var max = resolveVars(package, aValue.max)
+          aValue = "${min}-${max}"
+        }
+        
+        return JavaString.format(parsedformat, resolveVars(package, aValue), name)
+      }
+      return JavaString.format(parsedformat, resolveVars(package, value.result))
+    }
+
+    function computeFormat(category, section, fallback) {
+      var input = section.get("format")
+      if (input == null) return getFormat(fallback, category)
+      var format = getFormat(input, category)
+      return format == null ? input : format
+    }
+
+    function getFormat(type, category) {
+      if (type == null || (category != "CONDITIONS" && category != "EVENTS")) return null
+      var trackerConfig = Config.getPackages().get("Tracker").getConfig();
+      var section = trackerConfig.get("variables.${category.toLowerCase()}")
+      return section.getString(type.toLowerCase())
+    }
+
+    function resolveVars(package, input) {
+      var resolved = GlobalVariableResolver.resolve(package, input)
+      var variable = new VariableString(package, resolved)
+      return variable.getString(profile)
+    }
+
+    function parseItem(section) {
+      var namespace = section.get("item").toUpperCase(), id = section.get("id")
+      var value = parseValue(section.get("amount"))
+      var result = { namespace: namespace, amount: value }
+
+      switch (namespace) {
+        case "MMOITEMS":
+          var stringType = section.get("type")
+          var type = MMOItems.plugin.getTypes().get(stringType);
+          result.stack = MMOItems.plugin.getItem(type, id, PlayerData.get(player.getUniqueId()));
+          result.id = stringType + ":" + id
+          break;
+        case "VANILLA":
+          result.stack = utils.materialOf(id).parseItem();
+          result.id = id
+          break;
+        default:
+          throw Error("Unknown implementation.")
+      }
+      return { type: "ITEM", result: result }
+    }
+
+    function parseValue(input) {
+      if (input instanceof java.lang.Number) 
+        return { type: "NUMBER", result: input }
+      if (input instanceof java.lang.String) 
+        return { type: "STRING", result: input }
+      if (input.isSet("min") && input.isSet("max")) 
+        return { type: "RANGE", result: { 
+          min: input.get("min"), 
+          max: input.get("max") 
+        }}
+      if (input.isSet("item")) return parseItem(input)
+      throw Error("Unknown implementation.")
+    }
+
+    function getTrackerData(qConfig) {
+      return {
+        description: qConfig.get("description"),
+        location: qConfig.get("location"),
+        requirements: qConfig.get("requirements"),
+        rewards: qConfig.get("rewards")
+      }
+    }
+
+    function getDefaultTrackerData(id, qConfig) {
+      var tracker = qConfig.get("variables.tracker")
+      if (tracker == null) return {}
+      var completed = tags.contains("${id}.quest_completed")
+      var stage = tracker.get(completed ? "completed" : "default")
+      return stage == null ? {} : getTrackerData(stage)
+    }
+
+    function getCurrentState(id, qConfig) {
+      var stageData = getDefaultTrackerData(id, qConfig)
+      var storage = Metadata.globalData.get("quest_stages.${id}.${player.uniqueId}")
+      if (storage == null) return stageData
+      var overrides = getTrackerData(storage)
+      for (var key in overrides) 
+        if (overrides[key]) 
+          stageData[key] = overrides[key]
+      return stageData
+    }
+
+    function setRequirements(quest, state) {
+      quest.requirements = (state.requirements || Lists.newArrayList())
+        .stream().map(function(id) {
+          var section = quest.package.config.get("variables.requirements.${id}")
+          if (section == null) return
+            try {
+              var condition = new ConditionID(quest.package, section.get("condition"));
+              var state = BetonQuest.conditions(profile, condition);
+              var prefix = state == true ? "§a✔§7" : "§c❌§7";
+              var value = parseValue(section.get("value"))
+              var format = computeFormat("CONDITIONS", section, value.type)
+              var message = "${prefix} ${getFormattedValue(quest.package, format, value)}"
+              return { state: state, message: message }
+            } catch(e) { return null }
+          return id
+        })
+        .filter(function(e) { return e != null} )
+        .collect(Collectors.toList())
+    }
+
+    function setRewardPages(quest, state) {
+      if (!state.rewards) return
+      quest.rewards = state.rewards.stream()
+        .map(function(page) {
+          var setting = quest.package.config.get("variables.reward_settings.${page.id}")
+          if (!setting) return null
+          var reward = {
+            args: page.args || Lists.newArrayList(),
+            selector: new java.util.PriorityQueue(),
+            done: page.done || false
+          }
+          reward.options = setting.getValues(false).entrySet().stream()
+            .filter(function(set) { 
+              var types = config.get("REWARDS").getValues(false).keySet()
+              return types.contains(set.getKey().toUpperCase())
+            })
+            .map(function(set) { return parseRewardSection(quest, set) })
+            .collect(Collectors.toMap(
+              function(k) { return k.type }, 
+              function(v) { return { iterations: v.iterations, options: v.options } } 
+            ));
+          return reward
+        }).collect(Collectors.toList())
+    }
+
+    function parseRewardSection(quest, set) {
+      var iterations = 0, options = []
+      if (set.value instanceof java.util.ArrayList) options = set.value
+      else options = set.value.get("value"), iterations = set.value.get("limit", 1)
+      return { type: set.key.toUpperCase(), options: options.stream().map(function(e) {
+        var section = quest.package.config.get("variables.rewards.${e}")
+        if (section == null) return null
+        try {
+          var eventID = new EventID(quest.package, section.get("event"));
+          var value = parseValue(section.get("value"))
+          var format = computeFormat("EVENTS", section, value.type)
+          return { id: eventID, value: value, format: format }
+        } catch(e) { return null }
+      })
+      .filter(function(e) { return e != null } )
+      .collect(Collectors.toList()), iterations: iterations }
+    }
+
+    function getFooterLore(quest) {
+      var lore = Lists.newArrayList()
+      if (quest.rewards) {
+        lore.addAll(getRewardLore(quest))
+        var page = quest.page || 0, reward = null
+        if (page < quest.rewards.size()) 
+          reward = quest.rewards.get(page)
+        if (reward && reward.done) {
+          lore.addAll(["", "   §5§lDROP TO CLAIM"])
+          return lore
+        }
+      } 
+      if (quest.trackable) {
+        var tracked = vars("%javascript_tracker_active,${quest.id}%") == "true"
+        lore.addAll(["", "   §5§lDROP TO ${tracked ? 'UNTRACK' : 'TRACK'}"])
+      }
+      return lore
+    }
+
+    var reload = session.getArguments()[0] || true
+    if (reload == true) funcs("setQuests");
+    funcs("filterQuests");
+    funcs("loadIcons");
+
+  getSortingItemLore: |-
+    Java.from(config.get("SORTING"))
+      .map(function(e) { 
+          var prefix = e[0] == meta.sorting ? "&f - &7" : "&7 - &8"
+          return session.parse(prefix) + e[1]
+        })
+      .join("\n");
+
+  getFilterItemLore: |-
+    Java.from(config.get("FILTERS"))
+      .map(function(e) { 
+          var prefix = e[0] == meta.filter ? "&f - &7" : "&7 - &8"
+          return session.parse(prefix) + e[1]
+        })
+      .join("\n");
+
+  cycleSort: |-
+    var indexed = config.get("SORTING"), cycle = meta.click_type == "LEFT" ? 1 : -1
+    var current = indexed.stream().filter(function(e) { return e[0] == meta.sorting }).findFirst()
+    var currentIndex = indexed.indexOf(current.orElse("PLAYER_LEVEL")), max = indexed.size()
+    meta.sorting = indexed.get((currentIndex + cycle % max + max) % max)[0]
+    session.receptacle.setElement(null, utils.getIconSlots("Q", session), true)
+    utils.runAction(player, 'update: S', 'js: funcs("loadIcons") <delay:1>')
+    funcs("sortQuests")
+
+  cycleFilter: |-
+    var indexed = config.get("FILTERS"), cycle = meta.click_type == "LEFT" ? 1 : -1
+    var current = indexed.stream().filter(function(e) { return e[0] == meta.filter }).findFirst()
+    var currentIndex = indexed.indexOf(current.orElse("MAIN_HISTORY")), max = indexed.size()
+    meta.filter = indexed.get((currentIndex + cycle % max + max) % max)[0]
+    session.receptacle.setElement(null, utils.getIconSlots("Q", session), true)
+    utils.runAction(player, 'update: F', 'js: funcs("loadIcons") <delay:1>')
+    funcs("filterQuests")
+
+  sortQuests: |-
+    var stream = meta.computed.stream(), sortingMethod = null
+    if (meta.sorting == "WORLD_LEVEL") 
+      sortingMethod = Comparator.comparingInt(function(q) { return q.world_level})
+    else if (meta.sorting == "ALPHABETICAL") 
+      sortingMethod = Comparator.comparing(function(q) { return ChatColor.stripColor(q.name) })
+    else if (meta.sorting == "PLAYER_LEVEL") 
+      // TODO: Fix this as it has a different syntax now
+      sortingMethod = Comparator.comparingInt(function(q) { return q.config.getInt("variables.requirements.level") })
+    else if (meta.sorting == "DIFFICULTY")
+      sortingMethod = Comparator.comparingInt(function(q) { return config.get("DIFFICULTIES.${q.difficulty}", Number.MAX_VALUE) })
+    else if (meta.sorting == "DISTANCE") 
+      sortingMethod = Comparator.comparingInt(function(q) { return q.distance })
+
+    if (sortingMethod) stream = stream.sorted(meta.inverted_sorting ? sortingMethod.reversed() : sortingMethod)
+    stream = stream.sorted(Comparator.comparingInt(function(q) { 
+      return config.get("STATES.${q.state}.PRIORITY", Number.MAX_VALUE) 
+    }))
+    meta.computed = stream.collect(java.util.stream.Collectors.toList());
+
+  filterQuests: |-
+    meta.computed = meta.filter ? meta.quests.stream()
+      .filter(function(q) { return q.type == meta.filter })
+      .collect(java.util.stream.Collectors.toList()) : Lists.newArrayList(meta.quests);
+    funcs("sortQuests"); 
+    funcs("setPages")
+
+  setQuests: |-
+    meta.quests = Lists.newArrayList();
+    Config.getPackages().entrySet().forEach(function(entry) {
+      var package = entry.getValue(); var id = entry.getKey()
+      if (!package.getTemplates().contains("BasicQuest")) return
+      
+      var wrapper = { id: id, package: package, type: package.config.get("variables.type") }
+      wrapper.name = session.parse(GlobalVariableResolver.resolve(package, "$title$ &7[${wrapper.type}]"));
+
+      var currentState = getCurrentState(id, package.config)
+      setRewardPages(wrapper, currentState)
+      setRequirements(wrapper, currentState)
+
+      var debugState = package.config.get("debug.state")
+      if (debugState != null) wrapper.state = debugState
+      else if (tags.contains("${id}.quest_started")) wrapper.state = "STARTED";
+      else if (tags.contains("${id}.quest_completed")) wrapper.state = "COMPLETED";
+      else if (wrapper.requirements.stream()
+        .allMatch(function(e) { return e.state })) wrapper.state = "AVAILABLE";
+      else wrapper.state = "LOCKED"
+
+      Optional.ofNullable(currentState.description)
+        .map(function(id) { return package.config.get("variables.descriptions.${id}") })
+        .ifPresent(function(str) { 
+          var resolved = GlobalVariableResolver.resolve(package, str)
+          wrapper.description = session.parse(resolved) 
+        })
+
+      Optional.ofNullable(currentState.location)
+        .map(function(id) { return package.config.get("variables.locations.${id}") })
+        .ifPresent(function(loc) {
+          wrapper.location = new Location(
+            Bukkit.getWorld(loc.get("world")), 
+            parseFloat(loc.get("x")), parseFloat(loc.get("y")), parseFloat(loc.get("z")))
+        })
+      
+      wrapper.requirements = wrapper.requirements.stream()
+        .map(function(e) { return e.message })
+        .collect(Collectors.toList())
+
+
+      // TODO: This can be dynamic and stored as global data
+      if(package.config.isSet("variables.world_level")) 
+        wrapper.world_level = package.config.get("variables.world_level")
+      if(package.config.isSet("variables.difficulty")) 
+        wrapper.difficulty = package.config.get("variables.difficulty").toUpperCase()
+
+      // TODO: It should also be trackable if it has a location
+      wrapper.trackable = (wrapper.state == "AVAILABLE" 
+        || wrapper.state == "STARTED") && wrapper.description != null;
+
+      meta.quests.add(wrapper)
+    });
+
+  setPages: |-
+    meta.pages = {}; meta.current_page = 1; meta.max_pages = 0; 
+    var slots = utils.getIconSlots("Q", session);
+    for(i = 0, j = 0; i < meta.computed.length; i++, j++) {
+      if (i % slots.length == 0) {
+        meta.max_pages++, j = 0; 
+        meta.pages[meta.max_pages] = {} 
+      }
+      meta.pages[meta.max_pages]["${slots[j]}"] = i;
+    }
+    return true;
+
+  loadIcons: |-
+    meta.icons = {};
+    var builder = utils.getItemBuildr(); builder.hideAll(); 
+    var pageSetting = meta.pages[meta.current_page] || {};
+    utils.getIconSlots("Q", session).forEach(function(slot) {
+      var questIndex = pageSetting[slot]
+      if (questIndex == undefined) {
+        session.receptacle.setElement(null, slot, true);
+        return;
+      }
+      var quest = meta.computed[questIndex]
+      builder.name = quest.name
+      builder.setMaterial(utils.materialOf(config.get("STATES.${quest.state}.MATERIAL")));
+
+      builder.lore.add(session.parse(config.get("STATES.${quest.state}.DESCRIPTION")))
+      if(quest.description) builder.lore.addAll([""].concat(quest.description.split("\n")))
+
+      builder.lore.add("")
+      if(quest.requirements.length) builder.lore.addAll(quest.requirements)
+
+      if(quest.difficulty) builder.lore.add("   §7Difficulty: ${quest.difficulty}")
+      if(quest.world_level) builder.lore.add("   §7World Level: ${quest.world_level}")
+      if(quest.location != null) {
+        var playerLoc = session.viewer.getLocation()
+        var sameWorld = quest.location.getWorld().getUID() == playerLoc.getWorld().getUID()
+        var distance = sameWorld ? Math.floor(playerLoc.distance(quest.location)) : Number.MAX_VALUE
+        var distanceText = distance <= 100 ? "§aNear" : distance <= 500 ? "§eMedium" : "§cFar";
+        var blockCount = distance <= 1000 ? distance : "1000+";
+        builder.lore.add("   §7Distance: ${distanceText} §8(${blockCount} Blocks)")
+      }
+
+      quest.footer = builder.lore.size()
+      builder.lore.addAll(getFooterLore(quest))
+      session.receptacle.setElement(builder.build(), slot, true);
+      meta.icons[slot] = quest;  
+      builder.lore.clear();
+    })
+
+
+DIFFICULTIES: { EASY: 1, NORMAL: 2, LEGENDARY: 3 }
+
+SORTING: 
+  - [ PLAYER_LEVEL, "Combat Level" ]
+  - [ WORLD_LEVEL, "World Level" ]
+  - [ ALPHABETICAL, "Alphabetical" ]
+  - [ DIFFICULTY, "Difficulty" ]
+  - [ DISTANCE, "Distance" ]
+
+FILTERS:
+  - [ MAIN_HISTORY, "Main History" ]
+  - [ DAILY_QUEST, "Daily Quests" ]
+  - [ MINI_QUEST, "Mini Quests" ]
+  - [ EVENTS, "Events" ]
+
+REWARDS:
+  GUARANTEED: { PRIORITY: 0, DESCRIPTION: "§fGuaranteed" }
+  RANDOM: { PRIORITY: 1, DESCRIPTION: "§fRandom §7(§f%s max§7)" }
+  SELECTOR: { PRIORITY: 2, DESCRIPTION: "§fSelector §7(§f%s max§7)" }
+
+STATES:
+  # UNCLAIMED: { PRIORITY: 0, MATERIAL: ENCHANTED_BOOK, DESCRIPTION: "&dUnclaimed rewards" }
+  STARTED: { PRIORITY: 1, MATERIAL: BOOK_AND_QUILL, DESCRIPTION: "&aCurrently in progress" }
+  AVAILABLE: { PRIORITY: 2, MATERIAL: BOOK, DESCRIPTION: "&eCan be started" }
+  LOCKED: { PRIORITY: 3, MATERIAL: RED_STAINED_GLASS_PANE, DESCRIPTION: "&cCannot be started" }
+  COMPLETED: { PRIORITY: 4, MATERIAL: GREEN_STAINED_GLASS_PANE, DESCRIPTION: "&bAlready completed" }
+
+ERROR_MESSAGES:
+  UNSELECTED: "§cYou must select 1 or more entries"
+

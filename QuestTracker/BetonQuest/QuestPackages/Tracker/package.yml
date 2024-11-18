@@ -1,0 +1,14 @@
+events.activate_tab: command help %ph.javascript_tracker_load%
+objectives.login: login events:activate_tab global persistent
+
+variables:
+  conditions:
+    level: "Combat Lvl. Min: %s"
+    class: "Required Class: %s"
+    money: "Money: %s"
+    item: "Item: %sx %s"
+  events: 
+    class_experience: "[%s] %ph.mmocore_class% xp"
+    experience: "[%s] experience"
+    money: "[%s] coins"
+    item: "[%s] %s"

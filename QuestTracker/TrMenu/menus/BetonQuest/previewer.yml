@@ -1,0 +1,27 @@
+Title: '&8&lItem Previewer'
+Options.Hide-Player-Inventory: true
+
+Layout:
+- [ DDDDDDDDD ]
+- [ DDDDDDDDD, DDDDDDDDD ]
+- [ DDDDDDDDD, DDDDDDDDD, DDDDDDDDD ]
+- [ DDDDDDDDD, DDDDDDDDD, DDDDDDDDD, DDDDDDDDD ]
+- [ DDDDDDDDD, DDDDDDDDD, DDDDDDDDD, DDDDDDDDD, DDDDDDDDD ]
+- [ DDDDDDDDD, DDDDDDDDD, DDDDDDDDD, DDDDDDDDD, DDDDDDDDD, DDDDDDDDD ]
+
+Icons.D.display.material: AIR
+
+Events:
+  Open: 'js: funcs("fillInventory") <delay:1>'
+  Close: 'gui: tracker false <delay:1>'
+
+Functions:
+  fillInventory: |-
+    var quest = meta.icons[meta.slot]
+    var slots = utils.getIconSlots("D", session)
+    for (var i = 0; i < slots.length; i++) {
+      if (i >= quest.visualizer.size()) break
+      var item = quest.visualizer.get(i).stack
+      session.receptacle.setElement(item, slots[i], true);
+    }
+    return true
