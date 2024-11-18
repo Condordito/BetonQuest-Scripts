@@ -1,0 +1,113 @@
+# AUTHOR: https://github.com/Rubenicos
+
+%YAML 1.2
+---
+name: YAML (TrMenu)
+file_extensions:
+- yaml
+- yml
+scope: source.yaml
+contexts:
+  main:
+    - match: '#'
+      scope: punctuation.definition.comment
+      push: line_comment
+
+    # Menu scripts
+    - match: ^(?i)(fun(ction)?|script)s?([:])
+      captures:
+        0: punctuation.definition
+        1: punctuation.definition
+        3: punctuation.separator
+      push: menu-functions
+
+    # JavaScript condition
+    - match: ( + - ((?i)condition)([:]) ['](?:([$]|js:) ))
+      captures:
+        0: punctuation.definition
+        1: punctuation.definition
+        2: punctuation.definition
+        3: punctuation.separator
+        4: constant.character.escape
+      embed: scope:source.js
+      embed_scope: menu.condition.code.js
+      escape: (?<!')'(?!')
+      escape_captures:
+        0: punctuation.definition
+
+    # Kether condition
+    - match: ^( +) - ((?i)condition)([:]) [']
+      captures:
+        0: punctuation.definition
+        1: punctuation.definition
+        3: punctuation.separator
+      push: condition-kether
+
+    # YAML lint
+    - include: scope:source.yaml
+
+  line_comment:
+    - meta_scope: comment.line
+    - match: $
+      pop: true
+
+  menu-functions:
+    - meta_content_scope: menu.function.block
+    - match: ( [|]-\n)
+      captures:
+        1: constant.character.escape
+      embed: scope:source.js
+      embed_scope: menu.function.code.js
+      escape: (?=^(  )?\S+)
+      escape_captures:
+        0: menu.function.code.end
+    - match: (?=^\S)
+      pop: true
+    - include: scope:source.yaml
+
+  condition-kether:
+    - meta_content_scope: menu.condition.block
+    - match: \S
+      captures:
+        0: constant.character.escape
+      embed: kether
+      embed_scope: menu.condition.code.kether
+      escape: (?<!')'(?!')
+      escape_captures:
+        0: punctuation.definition
+    - match: '.'
+      pop: true
+    - include: scope:source.yaml
+
+  kether:
+    - meta_content_scope: constant.character.escape
+    - match: '"'
+      captures:
+        0: punctuation.definition
+      push: kether-string
+    - match: ([*])(")
+      captures:
+        1: constant.character.escape
+        2: punctuation.definition
+      push: kether-string
+    - match: ([*])(.)
+      captures:
+        1: constant.character.escape
+        2: string.quoted
+      push: kether-argument
+
+  kether-string:
+    - meta_content_scope: string.quoted.double.c
+    - match: \\.
+      scope: constant.character.escape.c
+    - match: '"'
+      captures:
+        0: punctuation.definition
+      pop: true
+
+  kether-argument:
+    - meta_content_scope: string.quoted.double.c
+    - match: \\.
+      scope: constant.character.escape.c
+    - match: ' '
+      pop: true
