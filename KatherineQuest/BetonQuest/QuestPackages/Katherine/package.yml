@@ -1,0 +1,353 @@
+package.templates: [ BasicQuest ]
+npcs.1: lvl1_quest_1
+
+variables:
+  title: "&8&lKatherine's challenge"
+  difficulty: "NORMAL"
+  type: MINI_QUEST
+
+  tracker: 
+    default: 
+      description: npc
+      location: npc
+      requirements: [ 0, 1 ]
+      rewards: [ { id: "general", args: [ 0 ] } ]
+    completed: { description: npc, location: npc }
+
+  reward_settings:
+    general:
+      random: { limit: 1, value: [ general.2, general.3, general.4 ] } 
+      selector: { limit: 1, value: [ general.5, general.6, general.7 ] }
+      guaranteed: [ general.0, general.1 ]
+    last_round:
+      selector: { limit: 1, value: [ last_round.0, last_round.1, last_round.2 ] }
+    2nd_last:
+      random: { limit: 1, value: [ 2nd_last.0, 2nd_last.1 ] }
+    3rd_last:
+      guaranteed: [ 3rd_last ]
+
+  rewards: 
+    general:
+      0: { event: rew_exp, value: "$formulas.experience$", format: class_experience }
+      1: { event: rew_money, value: "$formulas.money$", format: money }
+      2: { event: gen_item_1, value: { item: MMOITEMS, type: SPELLBOOK, id: DARK, amount: "$formulas.spellbook$" } }
+      3: { event: gen_item_2, value: { item: MMOITEMS, type: SPELLBOOK, id: EARTH, amount: "$formulas.spellbook$" } }
+      4: { event: gen_item_3, value: { item: MMOITEMS, type: SPELLBOOK, id: FIRE, amount: "$formulas.spellbook$" } }
+      5: { event: health_boost, value: "$formulas.boost$", format: "[%s] max health"}
+      6: { event: mana_boost, value: "$formulas.boost$", format: "[%s] max mana"}
+      7: { event: armor_boost, value: "$formulas.boost$", format: "[%s] armor"}
+    last_round:
+      0: { event: last_round_1, value: { item: MMOITEMS, type: SWORD, id: STATIC_SEEKER, amount: 1 } }
+      1: { event: last_round_2, value: { item: MMOITEMS, type: SWORD, id: EBONCHILL, amount: 1 } }
+      2: { event: last_round_3, value: { item: MMOITEMS, type: SWORD, id: CRESENT_BLADE, amount: 1 } }
+    2nd_last:
+      0: { event: 2nd_last_1, value: { item: MMOITEMS, type: ARMOR, id: LUNAR_CROWN, amount: 1 } }
+      1: { event: 2nd_last_2, value: { item: MMOITEMS, type: ARMOR, id: SOLAR_CROWN, amount: 1 } }
+    3rd_last: { event: 3rd_last, value: { item: MMOITEMS, type: OFF_CATALYST, id: VAMPIRIC_TOME, amount: 1 } }
+
+  locations:
+    npc: { world: Nivel1, x: -23, y: 31, z: 196 }
+    chest: { world: Nivel1, x: -24, y: 32, z: 196 }
+
+  descriptions: 
+    npc: |-
+      &7Talk to Katherine at &f$locations.npc.x$, $locations.npc.y$, $locations.npc.z$.
+      &7She will give you a task once you are there
+    chest: |-
+      &7Open the chest at &f$locations.chest.x$, $locations.chest.y$, $locations.chest.z$
+      &7and find the item doesn't belong there
+
+  requirements:
+    0: { condition: level_cond, value: "$formulas.level_cond$", format: level }
+    1: { condition: item_cond, value: { item: VANILLA, id: DIAMOND, amount: "$formulas.item_cond$" } } 
+  
+  # Functionality
+
+  formulas: 
+    money: "%math.calc:300+100*{ph.trmenu_args_0}%"
+    experience: "%math.calc:200+150*{ph.trmenu_args_0}%"
+    spellbook: "%math.calc:3+2*{ph.trmenu_args_0}%"
+    boost: "%math.calc:1+0.5*{ph.trmenu_args_0}%"
+    item_cond: "%math.calc:5+point.round.amount*10%"
+    level_cond: "%math.calc:5+point.round.amount*5%"
+
+  scoreboard: >-
+    &f\\n &aObjective &8\\| &fFind the item\\n that doesn't belong.\\n&f\\n
+    &aTimer &8\\| #progress_bar_{javascript_else_betonquest_Katherine:objective.timer.rawSeconds,%objective.data.timer%}
+    _m:%objective.data.timer%_l:10_c:&f■_p:&7■_r:&8■_fullbar:&f■■■■■■■■■■#
+    &8<@lb>&7#math_0_{javascript_else_betonquest_Katherine:objective.timer.rawSeconds,%objective.data.timer%}#s&8<@rb>\\n
+    &aRounds &8\\| &f%ph.math_0_if({betonquest_Katherine:objective.data.round}==0,1,{betonquest_Katherine:objective.data.round})%
+    &7out of &f$max_rounds$\\n &aPoints &8\\| &f%point.score.amount% &7out of &f%objective.data.max-score%\\n
+    &aRows &8\\| &f%math.calc:{objective.data.rows}+1% &7out of &f$max_rows$\\n
+    &aInterval &8\\| &f%objective.data.tick-interval% &7ticks
+
+  timer: 24
+  max_score: 2
+  timer_modifier: 0.95
+  tick_interval: 120
+  tick_interval_modifier: 0.9
+  max_rounds: 4
+  threshold: 2
+  max_rows: 6
+
+conversations: 
+  lvl1_quest_1: 
+    quester: Katherine
+    first: quest_completed,unmet_conditions,waiting,has_data_obj,first_round
+    NPC_options:
+      unmet_conditions:
+        text: |-
+          Sorry, you don't meet the
+          requirements for this task.
+          
+          You need to reach &blvl $formulas.level_cond$&f,
+          and have &b$formulas.item_cond$ diamonds&f.
+        conditions: '!has_reqs'
+      quest_completed: 
+        text: |-
+          I don't have more challenges 
+          for you right now. Come back
+          another day.
+        conditions: quest_completed
+      first_round:
+        text: |-
+          Hey %player%!
+
+          Got something exciting for you.
+          You in for some fun?
+        pointers: p1_yes,p1_no
+      has_data_obj:
+        text: |-
+          Congrats for completing the 
+          &blast challenge&f.
+
+          I'll make it a little harder now,
+          but you'll get &bbetter rewards&f!
+        pointers: p1_yes,p1_no
+        events: particle_folder
+        conditions: has_data_obj
+      npc_accept:
+        text: |-
+          Within this &bchest &flies a colection of wool, 
+          with &bone piece&f standing out from the rest.
+          
+          Bear in mind, the clock is &bticking&f.
+        pointers: p2_yes,p2_no
+      npc_cancel.text: |
+        Alright, then it's time for
+        you to leave.
+      npc_error.text: |
+        Don't hide my items!
+
+        Put them in your inventory and 
+        talk to me again.
+      waiting:
+        text: |-
+          What are you waiting for?
+          Unlock the chest already!
+        conditions: quest_started
+        pointers: p3_yes,p3_no
+      chest.text: |-
+        Feel free to open the chest 
+        whenever you're ready.
+    player_options: 
+      p1_yes:
+        text: '&a✅ ACCEPT'
+        events: handle_reqs
+      p1_no:
+        text: '&c❌ REJECT'
+        pointer: npc_cancel
+      p2_yes:
+        text: '&a✅ ACCEPT'
+        events: add_chest_obj,add_tab,chat_sound
+        pointer: chest
+      p2_no:
+        text: '&c❌ REJECT'
+        pointer: npc_cancel
+        events: del_particle_obj
+      p3_yes:
+        text: '&a✅ ACCEPT'
+        pointer: chest
+      p3_no: 
+        text: '&c❌ REJECT'
+        pointer: npc_cancel
+        events: del_particle_obj,del_tab,del_chest_obj
+
+events:
+  # Effects
+  chat_sound: notify io:sound sound:block.note_block.hat
+  firework_particle: particle firework loc:-23.5;32;196.5;Nivel1 private
+  chest_particle: particle chest loc:%randomnumber.decimal~2.-24~-23%;%randomnumber.decimal~2.32.5~33%;%randomnumber.decimal~2.196~197%;Nivel1 private 
+  particle_folder: folder chest_particle,add_particle_obj
+
+  # Scoreboard
+  add_tab: command papi parse %player% "%javascript_tracker_tab,Katherine,$title$,$scoreboard$%" | help "%ph.javascript_tracker_show,Katherine%"
+  del_tab: command help "%ph.javascript_tracker_remove,Katherine%"
+
+  # Requirements
+  handle_reqs: run
+    ^cancelconversation
+    ^if has_reqs npc_accept else npc_error
+  npc_accept: run 
+    ^folder particle_folder,chat_sound
+    ^take diamond:$requirements.1.value.amount$
+    ^conversation lvl1_quest_1 option:npc_accept
+  npc_error: conversation lvl1_quest_1 option:npc_error
+
+  # Objectives
+  add_particle_obj: objective add particle
+  del_particle_obj: objective remove particle
+
+  add_timer_obj: objective add timer
+  del_timer_obj: objective remove timer
+
+  add_chest_obj: run
+    ^objective add chest
+    ^folder add_data_obj,set_chest_stage
+    ^tag add quest_started
+  del_chest_obj: run
+    ^tag delete quest_started
+    ^objective remove chest
+    ^folder del_data_obj,unset_chest_stage
+
+  add_data_obj: run
+    ^objective add data conditions:!has_data_obj 
+    ^point round -1 ^folder next_round 
+  del_data_obj: run 
+    ^objective remove data 
+    ^deletepoint round
+    conditions:first_or_completed
+
+  # GUI Stages
+
+  set_chest_stage: |-
+    command trm action %player% set-gdata: quest_stages.Katherine.%player.uuid%.description chest
+          | trm action %player% set-gdata: quest_stages.Katherine.%player.uuid%.location chest
+
+  unset_chest_stage: |-
+    command trm action %player% rem-gdata: quest_stages.Katherine.%player.uuid%.description
+          | trm action %player% rem-gdata: quest_stages.Katherine.%player.uuid%.location
+
+  set_rewards: |-
+    command trm action %player% js: 
+    var Metadata = utils.staticClass('me.arasple.mc.trmenu.module.internal.data.Metadata');
+    var path = 'quest_stages.Katherine.' + player.uniqueId + '.rewards';
+    var rewards = new java.util.ArrayList(Metadata.globalData.get(path, new java.util.ArrayList()));
+    var round = %point.round.amount%, maxRound = $max_rounds$;
+
+    function main() {
+      if (round === 0) rewards.add({ id: 'general', args: java.util.Arrays.asList(0), done: true });
+      else rewards.get(rewards.size() - 1).done = true;
+      if (round >= maxRound - 3) rewards.get(rewards.size() - 2).done = true;
+      
+      if (round >= maxRound - 1) return;
+
+      var newArgs = java.util.Arrays.asList(round + 1);
+      rewards.add({ id: 'general', args: newArgs, done: false });
+      if (round == maxRound - 4) rewards.add({ id: '3rd_last', args: newArgs, done: false });
+      else if (round == maxRound - 3) rewards.add({ id: '2nd_last', args: newArgs, done: false });
+      else if (round == maxRound - 2) rewards.add({ id: 'last_round', args: newArgs, done: false });
+    }
+
+    try { main() } catch(e) { print(e) }
+    Metadata.globalData.set(path, rewards);
+
+  unset_rewards: |-
+    command trm action %player% js: 
+    var Metadata = utils.staticClass('me.arasple.mc.trmenu.module.internal.data.Metadata');
+    Metadata.globalData.set('quest_stages.Katherine.' + player.uniqueId + '.rewards', null)
+
+  # Quest states
+  start_quest: run
+    ^folder add_tab,add_timer_obj,del_particle_obj
+    ^command trm open random:%objective.data.rows% %player% %objective.data.tick-interval%
+
+  fail_quest: run 
+    ^notify &cYou lost\n&ftime to step up your game
+      io:title fadeOut:10 
+      sound:entity.axolotl.death 
+      soundpitch:0
+    ^folder reset_state
+
+  complete_quest: run 
+    ^notify &aYou've won\n&fenjoy the glory! 
+      io:title fadeOut:10
+      sound:ui.toast.challenge_complete 
+      soundvolume:0.5 
+    ^folder set_rewards,next_round,add_complete_tag,reset_state,firework_particle,del_timer_obj
+    conditions:max_score
+
+  reset_quest: run
+    ^folder del_tab,unset_rewards
+    ^tag delete quest_started,quest_completed
+    ^objective remove particle,chest,data
+    ^deletepoint round
+
+  # Extra
+  next_round: run
+    ^point round %ph.math_0_min({betonquest_Katherine:point.round.amount}+1,$max_rounds$)% action:set
+    ^variable data round %ph.math_0_if({betonquest_Katherine:point.round.amount}==0,0,min({betonquest_Katherine:point.round.amount},$max_rounds$-1)+1)%
+    ^variable data max-score %ph.math_0_$max_score$+floor({betonquest_Katherine:objective.data.round}/$threshold$)%
+    ^variable data rows %ph.math_0_min(floor({betonquest_Katherine:objective.data.round}/$threshold$),$max_rows$-1)%
+    ^variable data timer %ph.math_2_$timer$*$timer_modifier$^{betonquest_Katherine:objective.data.round}%
+    ^variable data tick-interval %ph.math_0_max(1,$tick_interval$*$tick_interval_modifier$^floor({betonquest_Katherine:objective.data.round}/$threshold$))%
+
+  reset_state: run
+    ^deletepoint score
+    ^command trm action %player% force-close
+    ^folder del_tab,del_chest_obj
+
+  add_score: run ^point score 1 action:add ^first complete_quest,extend_timer
+  add_complete_tag: tag add quest_completed conditions:rounds_completed
+  extend_timer: folder add_tab,del_timer_obj,add_timer_obj
+
+
+  # Rewards
+  rew_exp: command mmocore admin exp give %player% main $rewards.general.0.value$
+  rew_money: command cmi money give %player% $rewards.general.1.value$
+  gen_item_1: command mi give $rewards.general.2.value.type$ $rewards.general.2.value.id$ %player% $formulas.spellbook$
+  gen_item_2: command mi give $rewards.general.3.value.type$ $rewards.general.3.value.id$ %player% $formulas.spellbook$
+  gen_item_3: command mi give $rewards.general.4.value.type$ $rewards.general.4.value.id$ %player% $formulas.spellbook$
+  health_boost: command ml statmod %player% max_health $formulas.boost$
+  mana_boost: command ml statmod %player% max_mana $formulas.boost$
+  armor_boost: command ml statmod %player% armor $formulas.boost$
+  last_round_1: command mi give $rewards.last_round.0.value.type$ $rewards.last_round.0.value.id$ %player% $rewards.last_round.0.value.amount$
+  last_round_2: command mi give $rewards.last_round.1.value.type$ $rewards.last_round.1.value.id$ %player% $rewards.last_round.1.value.amount$
+  last_round_3: command mi give $rewards.last_round.2.value.type$ $rewards.last_round.2.value.id$ %player% $rewards.last_round.2.value.amount$
+  2nd_last_1: command mi give $rewards.2nd_last.0.value.type$ $rewards.2nd_last.0.value.id$ %player% $rewards.2nd_last.0.value.amount$
+  2nd_last_2: command mi give $rewards.2nd_last.1.value.type$ $rewards.2nd_last.1.value.id$ %player% $rewards.2nd_last.1.value.amount$
+  3rd_last: command mi give $rewards.3rd_last.value.type$ $rewards.3rd_last.value.id$ %player% $rewards.3rd_last.value.amount$
+
+objectives:
+  data: variable no-chat
+  chest: action any any loc:$locations.chest.x$;$locations.chest.y$;$locations.chest.z$;$locations.chest.world$ events:start_quest
+  timer: delay %objective.data.timer% seconds interval:1 events:fail_quest
+  particle: delay 5 ticks interval:5 events:particle_folder
+
+conditions:
+  has_data_obj: objective data
+  first_round: variable %point.round.amount% 0
+  rounds_completed: variable %point.round.amount% $max_rounds$
+  first_or_completed: or first_round,rounds_completed
+  max_score: point score %objective.data.max-score%
+  has_reqs: and level_cond,item_cond
+  level_cond: numbercompare %ph.mmocore_level% >= $requirements.0.value$
+  item_cond: item diamond:$requirements.1.value.amount$
+
+items.diamond: diamond
+
+effects:
+  chest:
+    class: Particle
+    particle: villager_happy
+  firework:
+    class: BigBangEffect
+    type: instant
+    sound_volume: 0
+    explosions: 1
+    fade_color: "#242e66"
+    intensity: 1
+    radius: 0
+    color: "#5e2bbd"
+    color2: "#3b2466"
+    color3: "#473157"
